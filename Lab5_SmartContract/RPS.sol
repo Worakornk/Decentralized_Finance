@@ -3,10 +3,11 @@
 
 pragma solidity >=0.7.0 <0.9.0;
 
-import {reveal, getHash, Commit} from "./CommitReveal.sol";
-import {setStartTime} from "./TimeUnit.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "./CommitReveal.sol";
+import "./TimeUnit.sol";
 
-contract RPS {
+contract RPS is ReentrancyGuard {
     uint public numPlayer = 0;
     uint public reward = 0;
     uint public startTime;
@@ -37,7 +38,7 @@ contract RPS {
         _;
     }
 
-    function addPlayer() public payable {
+    function addPlayer() public payable onlyAllowed {
         require(numPlayer < 2, "Maximum Players Reached");
         require(gameActive == false, "Game already in progress");
 
@@ -56,19 +57,7 @@ contract RPS {
         }
     }
 
-    // function input(uint choice) public {
-    //     require(numPlayer == 2);
-    //     require(player_not_played[msg.sender]);
-    //     require(choice >= 0 && choice <= 4, "Invalid Input");
-    //     player_choice[msg.sender] = choice;
-    //     player_not_played[msg.sender] = false;
-    //     numInput++;
-    //     if (numInput == 2) {
-    //         _checkWinnerAndPay();
-    //     }
-    // }
-
-    function commitMove(bytes32 hashedMove) public {
+    function commitMove(bytes32 hashedMove) public onlyAllowed {
         require(gameActive == true, "Game is not active");
         require(numPlayer == 2, "Not enough player");
         require(commits[msg.sender] == 0, "Move already commited");
@@ -76,14 +65,13 @@ contract RPS {
         commits[msg.sender] = hashedMove;
     }
 
-    function revealMove (uint choice, string memory nonce) public {
+    function revealMove (uint choice, string memory nonce) public onlyAllowed {
         require(gameActive == true, "Game is not active");
         require(commits[msg.sender] != 0, "No commit has been made);");
         require(revealed[msg.sender] == false, "Move already revealed");
         require(choice >= 0 && choice <= 4, "Invalid Input");
 
         bytes32 CheckHash = keccak256(abi.encodePacked(choice, nonce));
-        // Check if it's same move
         require(CheckHash == commits[msg.sender], "Invalid Reveal");
         
 
@@ -95,7 +83,7 @@ contract RPS {
         }
     }
 
-    function _findWinner() private {
+    function _findWinner() private nonReentrant {
         uint p0Choice = player_choices[players[0]];
         uint p1Choice = player_choices[players[1]];
         address payable account0 = payable(players[0]);
@@ -113,7 +101,7 @@ contract RPS {
         _resetGame();
     }
 
-    function withdrawIfTimeout() public {
+    function withdrawIfTimeout() public onlyAllowed {
         require(gameActive == true, "No game to withdraw");
         require(block.timestamp > startTime + 5 minutes, "You can only withdraw after 5 minutes if other player haven't make a move");
 
