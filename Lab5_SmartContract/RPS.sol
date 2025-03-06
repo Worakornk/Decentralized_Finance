@@ -138,13 +138,29 @@ contract RPS {
     }
     event WinnerDeclared(address winner, uint amount);
 
-    function withdrawIfTimeout() public payable onlyAllowed {
-        require(gameActive == true, "No game to withdraw");
-        require(block.timestamp > startTime + 5 minutes, "You can only withdraw after 5 minutes if other player haven't made a move");
+    function withdrawIfNoOpponent() public onlyAllowed {
+        require(numPlayer == 1, "Cannot withdraw, game in progress or no funds");
+        require(block.timestamp > startTime + 5 minutes, "Must wait 5 minutes before withdrawing");
+        
+        address payable player0 = payable(players[0]);
+        player0.transfer(reward);
+        
+        _resetGame();
+    }
 
-        for (uint i = 0; i < players.length; i++) {
-            address payable player = payable(players[i]);
-            player.transfer(reward / numPlayer);
+    function withdrawIfTimeout() public onlyAllowed {
+        require(gameActive, "No game to withdraw from");
+        require(block.timestamp > startTime + 5 minutes, "Cannot withdraw yet");
+
+        if (commits[players[0]].revealed && !commits[players[1]].revealed) {
+            payable(players[0]).transfer(reward);
+        } else if (commits[players[1]].revealed && !commits[players[0]].revealed) {
+            payable(players[1]).transfer(reward);
+        } else {
+            for (uint i = 0; i < players.length; i++) {
+                address payable player = payable(players[i]);
+                player.transfer(reward / numPlayer);
+            }
         }
         _resetGame();
     }
