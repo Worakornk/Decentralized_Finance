@@ -1,8 +1,8 @@
-# **ปฏิบัติการที่ 5การเขียน smart contract**
+# **ปฏิบัติการที่ 5 การเขียน smart contract**
 
 **จากเกมเป่ายิ้งฉุบธรรมดา แปลงให้เป็นเกมเป่ายิ้งฉุบที่น่าสนใจมากขึ้น**
 
-**[https://bigbangtheory.fandom.com/wiki/Rock,_Paper,_Scissors,_Lizard,_Spock](https://bigbangtheory.fandom.com/wiki/Rock,_Paper,_Scissors,_Lizard,_Spock)**
+**[https://bigbangtheory.fandom.com/wiki/Rock,\_Paper,\_Scissors,\_Lizard,\_Spock](https://bigbangtheory.fandom.com/wiki/Rock,_Paper,_Scissors,_Lizard,_Spock)**
 
 **[https://www.youtube.com/watch?v=x5Q6-wMx-K8](https://www.youtube.com/watch?v=x5Q6-wMx-K8)**
 
@@ -161,7 +161,7 @@ choice = '00'
 
 ```
 
-
+## ฟังก์ชั่น revealMove
 
 ```
 
@@ -178,7 +178,7 @@ choice = '00'
         require(uint64(block.number) <= commits[msg.sender].block+250,"RPS::revealMove: Revealed too late");
 
         require(gameActive == true, "RPS::revealMove: Game is not active");
-  
+
         player_choices[msg.sender] = getLastByte(Move);
 
         emit MoveRevealed(msg.sender, player_choices[msg.sender]);
@@ -191,7 +191,11 @@ choice = '00'
 
 ```
 
+## ฟังก์ชั่น findWinner
 
+* เล่นเกม Rock, Paper, Scissors, Lizard, Spock
+  * แต่ละ Choice xx จะชนะ Choice xx + 2 และ xx + 4 เสมอ ดังนั้นจึงใช้การ Modulo 5 เพื่อหาความสัมพันธ์ว่าใครเป็นผู้ชนะได้
+* ให้ Contract reset หลังจากจ่ายเงินแล้ว
 
 ```
 
@@ -200,13 +204,13 @@ choice = '00'
         uint p1Choice = player_choices[players[1]];
         address payable account0 = payable(players[0]);
         address payable account1 = payable(players[1]);
-  
+
         if ((p0Choice + 1) % 5 == p1Choice || (p0Choice + 3) % 5 == p1Choice) {
             account1.transfer(reward);
             emit WinnerDeclared(account1, reward);
         } else if ((p1Choice + 1) % 5 == p0Choice || (p1Choice + 3) % 5 == p0Choice) {
             account0.transfer(reward);
-            emit WinnerDeclared(account0, reward);  
+            emit WinnerDeclared(account0, reward);
         } else {
             account0.transfer(reward / 2);
             account1.transfer(reward / 2);
@@ -220,6 +224,8 @@ choice = '00'
 
 ```
 
+## ฟังก์ชั่น withdrawIfNoOpponent
+
 ใส่ฟังก์ชั่นที่ อนุญาตให้ถอนเงินหากไม่มีผู้เล่น join game เพิ่ม
 
 ```
@@ -227,15 +233,17 @@ choice = '00'
     function withdrawIfNoOpponent() public onlyAllowed {
         require(numPlayer == 1, "Cannot withdraw, game in progress or no funds");
         require(block.timestamp > startTime + 5 minutes, "Must wait 5 minutes before withdrawing");
-  
+
         address payable player0 = payable(players[0]);
         player0.transfer(reward);
-  
+
         _resetGame();
     }
 
 
 ```
+
+## ฟังก์ชั่น withdrawIfNoTimeout
 
 ใส่ฟังก์ชั่นที่ อนุญาตให้ถอนเงินเมื่อผู้เล่นเข้ามา 2 คนแล้วถ้าเวลาผ่านไป 5 นาที แล้วผู้เล่นอีกคนไม่ยอม Commit
 
@@ -254,7 +262,7 @@ choice = '00'
 
 ```
 
-ฟังก์ชั่น Reset Game เพื่อให้เกมเริ่มใหม่ตอนเล่นเสร็จ
+## ฟังก์ชั่น Reset Game
 
 ```
 
