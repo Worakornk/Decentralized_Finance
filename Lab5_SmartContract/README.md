@@ -67,6 +67,12 @@
 
 ## ฟังก์ชั่นเพิ่มผู้เล่น
 
+**การป้องกันการ Lock เงินไว้ใน Contract**
+
+ในโค้ดนี้ เงินที่ผู้เล่นจ่าย (1 ether) จะถูกเก็บไว้ในตัวแปร `reward` ซึ่งจะใช้สำหรับแจกจ่ายให้ผู้ชนะ หลังจากที่เกมสิ้นสุดแล้ว ตัวแปร `reward` จะถูกโอนคืนให้ผู้ชนะผ่านฟังก์ชัน `_findWinner()` หรือหากมีการยกเลิกเกมก็จะคืนเงินให้ผู้เล่นที่เหลือ
+
+โค้ดนี้จะตรวจสอบผลของการเล่นและโอนเงินไปให้ผู้ชนะหรือแบ่งเงินให้ผู้เล่นทั้งสองคนในกรณีเสมอ ไม่ทำให้เงินถูกล็อคไว้หลังจากสิ้นสุดเกม
+
 ```
 
     function addPlayer() public payable onlyAllowed {
@@ -144,9 +150,14 @@ choice = '00'
 
 จะได้ `0x617f5cd344acf9f37ac85f4a19c7a34be7f8e2dd288ad689037113a55a183602` เพื่อเอาไปใส่ใน `commitMove`
 
-## ฟังก์ชั่น commitMove
+## **โค้ดส่วนที่ทำการซ่อน choice และ commit**
+
+### ฟังก์ชั่น commitMove
 
 (คือ Commit ใน CommitReveal)
+
+เพื่อป้องกันไม่ให้ผู้เล่นเห็นตัวเลือกของกันและกันก่อนจะเปิดเผย (reveal) ผู้เล่นจะทำการ `commit` ตัวเลือกของพวกเขาโดยใช้ฟังก์ชัน `commitMove()` ซึ่งรับข้อมูลแฮชที่ถูกสร้างจากตัวเลือกของผู้เล่น
+เมื่อผู้เล่นส่งข้อมูลที่เป็นแฮชแล้ว (ที่มาจากการเข้ารหัสตัวเลือก) ตัวเลือกนี้จะถูกบันทึกลงใน `commit` และจะไม่สามารถเปิดเผยได้จนกว่าจะถึงเวลาที่กำหนดในฟังก์ชัน `revealMove()`
 
 ```
 
@@ -161,15 +172,47 @@ choice = '00'
 
 ```
 
-## ฟังก์ชั่น revealMove
+## โค้ดส่วนทำการ reveal และนำ choice มาตัดสินผู้ชนะ
+
+### ฟังก์ชั่น revealMove
+
+เมื่อทั้งสองผู้เล่นทำการเปิดเผยตัวเลือก (reveal) แล้ว ฟังก์ชัน `revealMove()` จะทำการตรวจสอบความถูกต้องของการเปิดเผย ตัวเลือกแต่ละตัวจะถูกเก็บไว้ใน `player_choices` และเมื่อผู้เล่นทั้งสองเปิดเผยแล้ว จะทำการตัดสินผู้ชนะในฟังก์ชัน `_findWinner()`
+
+```
 
     // Reveal โดยใส่ผลลัพธ์จาก choice_hiding_v2
+    function revealMove (bytes32 Move) public onlyAllowed {
+        require(isValidChoice(Move), "Invalid move: must be 00-04");
 
-## ฟังก์ชั่น findWinner
+        require(commits[msg.sender].revealed == false, "RPS::revealMove: Move already revealed");
+        commits[msg.sender].revealed= true;
+
+        require(getHash(Move)==commits[msg.sender].commit,"CommitReveal::reveal: Revealed hash does not match commit");
+
+        require(uint64(block.number)>commits[msg.sender].block,"CommitReveal::reveal: Reveal and commit happened on the same block");
+        require(uint64(block.number) <= commits[msg.sender].block+250,"RPS::revealMove: Revealed too late");
+
+        require(gameActive == true, "RPS::revealMove: Game is not active");
+      
+        player_choices[msg.sender] = getLastByte(Move);
+
+        emit MoveRevealed(msg.sender, player_choices[msg.sender]);
+
+        if ( commits[players[0]].revealed && commits[players[1]].revealed ) {
+            _findWinner();
+        }
+    }
+    event MoveRevealed(address player, uint choice);
+
+```
+
+### ฟังก์ชั่น findWinner
 
 * เล่นเกม Rock, Paper, Scissors, Lizard, Spock
   * แต่ละ Choice xx จะชนะ Choice xx + 2 และ xx + 4 เสมอ ดังนั้นจึงใช้การ Modulo 5 เพื่อหาความสัมพันธ์ว่าใครเป็นผู้ชนะได้
 * ให้ Contract reset หลังจากจ่ายเงินแล้ว
+
+ในโค้ดนี้ เงินที่ผู้เล่นจ่าย (1 ether) จะถูกเก็บไว้ในตัวแปร `reward` ซึ่งจะใช้สำหรับแจกจ่ายให้ผู้ชนะ หลังจากที่เกมสิ้นสุดแล้ว ตัวแปร `reward` จะถูกโอนคืนให้ผู้ชนะผ่านฟังก์ชัน `_findWinner()` หรือหากมีการยกเลิกเกมก็จะคืนเงินให้ผู้เล่นที่เหลือ
 
 ```
 
@@ -198,7 +241,11 @@ choice = '00'
 
 ```
 
-## ฟังก์ชั่น withdrawIfNoOpponent
+## ส่วน**โค้ดที่จัดการกับความล่าช้าที่ผู้เล่นไม่ครบทั้งสองคน**
+
+ฟังก์ชัน `withdrawIfNoOpponent()` และ `withdrawIfTimeout()` จะช่วยจัดการกับกรณีที่ผู้เล่นไม่ได้ทำการเปิดเผยตัวเลือก (reveal) ภายในเวลาที่กำหนด หรือหากมีผู้เล่นเพียงคนเดียวในเกม
+
+### ฟังก์ชั่น withdrawIfNoOpponent
 
 ใส่ฟังก์ชั่นที่ อนุญาตให้ถอนเงินหากไม่มีผู้เล่น join game เพิ่ม
 
@@ -217,7 +264,7 @@ choice = '00'
 
 ```
 
-## ฟังก์ชั่น withdrawIfNoTimeout
+### ฟังก์ชั่น withdrawIfNoTimeout
 
 ใส่ฟังก์ชั่นที่ อนุญาตให้ถอนเงินเมื่อผู้เล่นเข้ามา 2 คนแล้วถ้าเวลาผ่านไป 5 นาที แล้วผู้เล่นอีกคนไม่ยอม Commit
 
