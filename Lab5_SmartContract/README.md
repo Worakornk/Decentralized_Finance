@@ -15,8 +15,7 @@
 3. ใช้ commit-reveal เพื่อซ่อนการเลือก เพื่อแก้ front-running
 4. ต้องใช้ฟังก์ชั่นเกี่ยวกับเวลาเพื่อเปิดโอกาสให้มีการถอนเงินออกหลังจากระยะเวลาผ่านไประยะหนึ่ง
 
-
-**Setup**
+## **Setup & Modifier**
 
 กำหนดให้ 0, 1, 2, 3, 4 แทน Rock, Paper, Scissors, Spock และ Lizard
 
@@ -40,7 +39,6 @@
     address[] public players;
 
 ```
-
 
 ใส่ allowedAddresses กำหนดไปว่าจะรับ Transaction จาก Address 4 ตัวนี้เท่านั้น
 แล้วตั้งให้เป็น modifer เพื่อบังคับฟังก์ชั่นให้ตรวจสอบว่าถูกเรียกโดยคนพวกนี้เท่านั้นหรือไม่
@@ -67,7 +65,7 @@
 
 ```
 
-
+## ฟังก์ชั่นเพิ่มผู้เล่น
 
 ```
 
@@ -96,7 +94,59 @@
 
 ```
 
+ผู้เล่นต้องทำการใส่ input ที่เป็นผลลัพธ์จากการเอา 00, 01, 02, 03 หรือ 04 ไปเข้าโปรแกรม choice_hiding_v2.ipynb
+โดย choice_hiding_v2.ipynb หน้าตาแบบนี้
 
+```
+
+import random
+
+
+# generate 31 random bytes
+rand_num = random.getrandbits(256 - 8)
+rand_bytes = hex(rand_num)
+
+# choice: '00', '01', '02' (rock, paper, scissors)
+# concatenate choice to rand_bytes to make 32 bytes data_input
+choice = '00'
+data_input = rand_bytes + choice
+print(data_input)
+print(len(data_input))
+print()
+
+# need padding if data_input has less than 66 symbols (< 32 bytes)
+if len(data_input) < 66:
+  print("Need padding.")
+  data_input = data_input[0:2] + '0' * (66 - len(data_input)) + data_input[2:]
+  assert(len(data_input) == 66)
+else:
+  print("Need no padding.")
+print("Choice is", choice)
+print("Use the following bytes32 as an input to the getHash function:", data_input)
+print(len(data_input))
+
+```
+
+ตัวอย่าง
+choice = '00'
+พอคำนวน data_input = rand_bytes(31 bytes) + choice(1 byte)
+จะได้ `0xb15806802200b99f97cd7ca3135403a0e87be8b068ca0d3b274edc765ae3f000`
+เช็คความยาว แล้วเติม Padding
+จะได้ `0xb15806802200b99f97cd7ca3135403a0e87be8b068ca0d3b274edc765ae3f000` เอาไปใส่ใน `getHash` function
+
+```
+
+    function getHash(bytes32 data) public pure returns(bytes32){
+        return keccak256(abi.encodePacked(data));
+    }
+
+```
+
+จะได้ `0x617f5cd344acf9f37ac85f4a19c7a34be7f8e2dd288ad689037113a55a183602` เพื่อเอาไปใส่ใน `commitMove`
+
+## ฟังก์ชั่น commitMove
+
+(คือ Commit ใน CommitReveal)
 
 ```
 
@@ -110,6 +160,7 @@
     event MoveCommitted(address player);
 
 ```
+
 
 
 ```
@@ -127,7 +178,7 @@
         require(uint64(block.number) <= commits[msg.sender].block+250,"RPS::revealMove: Revealed too late");
 
         require(gameActive == true, "RPS::revealMove: Game is not active");
-      
+  
         player_choices[msg.sender] = getLastByte(Move);
 
         emit MoveRevealed(msg.sender, player_choices[msg.sender]);
@@ -149,7 +200,7 @@
         uint p1Choice = player_choices[players[1]];
         address payable account0 = payable(players[0]);
         address payable account1 = payable(players[1]);
-      
+  
         if ((p0Choice + 1) % 5 == p1Choice || (p0Choice + 3) % 5 == p1Choice) {
             account1.transfer(reward);
             emit WinnerDeclared(account1, reward);
@@ -169,8 +220,24 @@
 
 ```
 
+ใส่ฟังก์ชั่นที่ อนุญาตให้ถอนเงินหากไม่มีผู้เล่น join game เพิ่ม
 
-ใส่ฟังก์ชั่นที่เช็คว่าเมื่อผู้เล่นเข้ามา 2 คนแล้วถ้าเวลาผ่านไป 5 นาที แล้วผู้เล่นอีกคนไม่ยอม Commit 
+```
+
+    function withdrawIfNoOpponent() public onlyAllowed {
+        require(numPlayer == 1, "Cannot withdraw, game in progress or no funds");
+        require(block.timestamp > startTime + 5 minutes, "Must wait 5 minutes before withdrawing");
+  
+        address payable player0 = payable(players[0]);
+        player0.transfer(reward);
+  
+        _resetGame();
+    }
+
+
+```
+
+ใส่ฟังก์ชั่นที่ อนุญาตให้ถอนเงินเมื่อผู้เล่นเข้ามา 2 คนแล้วถ้าเวลาผ่านไป 5 นาที แล้วผู้เล่นอีกคนไม่ยอม Commit
 
 ```
 
@@ -186,7 +253,6 @@
     }
 
 ```
-
 
 ฟังก์ชั่น Reset Game เพื่อให้เกมเริ่มใหม่ตอนเล่นเสร็จ
 
