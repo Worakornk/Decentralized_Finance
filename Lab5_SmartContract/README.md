@@ -163,33 +163,7 @@ choice = '00'
 
 ## ฟังก์ชั่น revealMove
 
-```
-
     // Reveal โดยใส่ผลลัพธ์จาก choice_hiding_v2
-    function revealMove (bytes32 Move) public onlyAllowed {
-        require(isValidChoice(Move), "Invalid move: must be 00-04");
-
-        require(commits[msg.sender].revealed == false, "RPS::revealMove: Move already revealed");
-        commits[msg.sender].revealed= true;
-
-        require(getHash(Move)==commits[msg.sender].commit,"CommitReveal::reveal: Revealed hash does not match commit");
-
-        require(uint64(block.number)>commits[msg.sender].block,"CommitReveal::reveal: Reveal and commit happened on the same block");
-        require(uint64(block.number) <= commits[msg.sender].block+250,"RPS::revealMove: Revealed too late");
-
-        require(gameActive == true, "RPS::revealMove: Game is not active");
-
-        player_choices[msg.sender] = getLastByte(Move);
-
-        emit MoveRevealed(msg.sender, player_choices[msg.sender]);
-
-        if ( commits[players[0]].revealed && commits[players[1]].revealed ) {
-            _findWinner();
-        }
-    }
-    event MoveRevealed(address player, uint choice);
-
-```
 
 ## ฟังก์ชั่น findWinner
 
