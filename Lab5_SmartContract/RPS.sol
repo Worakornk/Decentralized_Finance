@@ -1,22 +1,26 @@
-
 // SPDX-License-Identifier: GPL-3.0
 
-pragma solidity >=0.7.0 <0.9.0;
+pragma solidity >= 0.7.0 <0.9.0;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./CommitReveal.sol";
 import "./TimeUnit.sol";
 
-contract RPS is ReentrancyGuard {
+contract RPS {
+
     uint public numPlayer = 0;
     uint public reward = 0;
     uint public startTime;
     bool public gameActive = false;
 
+    struct Commit {
+        bytes32 commit;
+        uint64 block;
+        bool revealed;
+    }
+
+    mapping (address => Commit) public commits;
     // 0 - Rock, 1 - Paper , 2 - Scissors, 3 - Spock, 4 - Lizard
-    mapping (address => bytes32) public commits; 
-    mapping (address => uint) public player_choices; 
-    mapping(address => bool) public revealed;
+    mapping (address => uint) public player_choices;
 
     address[] public players;
     address[] private allowedAddresses = [
@@ -48,42 +52,70 @@ contract RPS is ReentrancyGuard {
 
         require(msg.value == 1 ether, "Entry fee is 1 ether");
         reward += msg.value;
+        // reward += 1 ether;
         players.push(msg.sender);
+
         numPlayer++;
+        emit PlayerJoined(msg.sender);
 
         if (numPlayer == 2) {
             gameActive = true;
             startTime = block.timestamp;
         }
     }
+    event PlayerJoined(address player);
 
-    function commitMove(bytes32 hashedMove) public onlyAllowed {
-        require(gameActive == true, "Game is not active");
-        require(numPlayer == 2, "Not enough player");
-        require(commits[msg.sender] == 0, "Move already commited");
-
-        commits[msg.sender] = hashedMove;
+    function isValidChoice(bytes32 data) public pure returns (bool) {
+    bytes1 lastByte = bytes1(data << 248); // Extract the last byte
+    return (lastByte == 0x00 ||
+            lastByte == 0x01 ||
+            lastByte == 0x02 ||
+            lastByte == 0x03 ||
+            lastByte == 0x04);
     }
 
-    function revealMove (uint choice, string memory nonce) public onlyAllowed {
-        require(gameActive == true, "Game is not active");
-        require(commits[msg.sender] != 0, "No commit has been made);");
-        require(revealed[msg.sender] == false, "Move already revealed");
-        require(choice >= 0 && choice <= 4, "Invalid Input");
+    // Commit ด้วยผลลัพธ์จาก Function getHash ที่รับ ผลลัพธ์ choice_hiding_v2 เป็น input
+    function commitMove(bytes32 dataHash) public onlyAllowed {
+        commits[msg.sender].commit = dataHash;
+        commits[msg.sender].block = uint64(block.number);
+        commits[msg.sender].revealed = false;
+        emit MoveCommitted(msg.sender);
+    }
+    event MoveCommitted(address player);
 
-        bytes32 CheckHash = keccak256(abi.encodePacked(choice, nonce));
-        require(CheckHash == commits[msg.sender], "Invalid Reveal");
+    function getLastByte(bytes32 data) private pure returns (uint8) {
+        return uint8(data[31]); // Extracts the last byte and converts to uint8
+    }
+
+    function getHash(bytes32 data) public pure returns(bytes32){
+        return keccak256(abi.encodePacked(data));
+    }
+
+    // Reveal โดยใส่ผลลัพธ์จาก choice_hiding_v2
+    function revealMove (bytes32 Move) public onlyAllowed {
+        require(isValidChoice(Move), "Invalid move: must be 00-04");
+
+        require(commits[msg.sender].revealed == false, "RPS::revealMove: Move already revealed");
+        commits[msg.sender].revealed= true;
+
+        require(getHash(Move)==commits[msg.sender].commit,"CommitReveal::reveal: Revealed hash does not match commit");
+
+        require(uint64(block.number)>commits[msg.sender].block,"CommitReveal::reveal: Reveal and commit happened on the same block");
+        require(uint64(block.number) <= commits[msg.sender].block+250,"RPS::revealMove: Revealed too late");
+
+        require(gameActive == true, "RPS::revealMove: Game is not active");
         
+        player_choices[msg.sender] = getLastByte(Move);
 
-        player_choices[msg.sender] = choice;
-        revealed[msg.sender] = true;
+        emit MoveRevealed(msg.sender, player_choices[msg.sender]);
 
-        if (revealed[players[0]] && revealed[players[1]]) {
+        if ( commits[players[0]].revealed && commits[players[1]].revealed ) {
             _findWinner();
         }
     }
+    event MoveRevealed(address player, uint choice);
 
-    function _findWinner() private nonReentrant {
+    function _findWinner() private {
         uint p0Choice = player_choices[players[0]];
         uint p1Choice = player_choices[players[1]];
         address payable account0 = payable(players[0]);
@@ -91,26 +123,30 @@ contract RPS is ReentrancyGuard {
         
         if ((p0Choice + 1) % 5 == p1Choice || (p0Choice + 3) % 5 == p1Choice) {
             account1.transfer(reward);
+            emit WinnerDeclared(account1, reward);
         } else if ((p1Choice + 1) % 5 == p0Choice || (p1Choice + 3) % 5 == p0Choice) {
-            account0.transfer(reward);    
+            account0.transfer(reward);
+            emit WinnerDeclared(account0, reward);    
         } else {
             account0.transfer(reward / 2);
             account1.transfer(reward / 2);
+            emit WinnerDeclared(players[0], reward / 2);
+            emit WinnerDeclared(players[1], reward / 2);
         }
 
         _resetGame();
     }
+    event WinnerDeclared(address winner, uint amount);
 
-    function withdrawIfTimeout() public onlyAllowed {
+    function withdrawIfTimeout() public payable onlyAllowed {
         require(gameActive == true, "No game to withdraw");
-        require(block.timestamp > startTime + 5 minutes, "You can only withdraw after 5 minutes if other player haven't make a move");
+        require(block.timestamp > startTime + 5 minutes, "You can only withdraw after 5 minutes if other player haven't made a move");
 
         for (uint i = 0; i < players.length; i++) {
             address payable player = payable(players[i]);
-            if (revealed[player] == false) {
-                player.transfer(1 ether);
-            }
+            player.transfer(reward / numPlayer);
         }
+        _resetGame();
     }
 
     function _resetGame() private {
@@ -118,5 +154,8 @@ contract RPS is ReentrancyGuard {
         reward = 0;
         delete players;
         gameActive = false;
+
+        emit GameReset();
     }
+    event GameReset();
 }
