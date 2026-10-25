@@ -1,0 +1,21 @@
+# Remix IDE workspace artefacts
+.deps/
+.states/
+artifacts/
+
+# Foundry / Hardhat build output
+out/
+build/
+cache/
+broadcast/
+typechain-types/
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
